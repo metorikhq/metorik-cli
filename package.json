@@ -1,0 +1,54 @@
+{
+  "name": "metorik",
+  "version": "0.1.0",
+  "description": "Agent-friendly CLI for the Metorik API",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metorikhq/metorik-cli.git"
+  },
+  "homepage": "https://github.com/metorikhq/metorik-cli#readme",
+  "bugs": {
+    "url": "https://github.com/metorikhq/metorik-cli/issues"
+  },
+  "type": "module",
+  "bin": {
+    "metorik": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --platform node --target node20 --minify --clean",
+    "dev": "tsx src/index.ts",
+    "link-local": "npm run build && npm link",
+    "unlink-local": "npm unlink -g metorik",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "metorik",
+    "cli",
+    "api",
+    "ai",
+    "agents"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.22",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
