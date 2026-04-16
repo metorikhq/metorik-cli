@@ -4,6 +4,7 @@ import { Command, Option } from "commander";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 type HttpMethod = "GET" | "POST" | "DELETE";
@@ -15,6 +16,7 @@ type Endpoint = {
   required?: string[];
   optional?: string[];
   enums?: Record<string, string[]>;
+  integerFields?: string[];
   description: string;
 };
 
@@ -51,6 +53,12 @@ const sourceFields = [
 ] as const;
 
 const endpoints: Record<string, Endpoint> = {
+  store: {
+    command: "store",
+    method: "GET",
+    path: "/",
+    description: "Get store details"
+  },
   search: {
     command: "search",
     method: "GET",
@@ -58,6 +66,7 @@ const endpoints: Record<string, Endpoint> = {
     required: ["resource", "query"],
     optional: ["count"],
     enums: { resource: [...searchResources] },
+    integerFields: ["count"],
     description: "Search customers, orders, products, and more"
   },
   products: {
@@ -84,6 +93,7 @@ const endpoints: Record<string, Endpoint> = {
       ],
       order_dir: ["asc", "desc"]
     },
+    integerFields: ["page", "per_page"],
     description: "List product sales for a date range"
   },
   variations: {
@@ -109,6 +119,7 @@ const endpoints: Record<string, Endpoint> = {
       ],
       order_dir: ["asc", "desc"]
     },
+    integerFields: ["page", "per_page"],
     description: "List variation sales for a date range"
   },
   categories: {
@@ -131,6 +142,7 @@ const endpoints: Record<string, Endpoint> = {
       ],
       order_dir: ["asc", "desc"]
     },
+    integerFields: ["page", "per_page"],
     description: "List category sales for a date range"
   },
   brands: {
@@ -139,6 +151,7 @@ const endpoints: Record<string, Endpoint> = {
     path: "/brands",
     required: ["start_date", "end_date"],
     optional: ["page", "per_page", "search"],
+    integerFields: ["page", "per_page"],
     description: "List brand sales for a date range"
   },
   coupons: {
@@ -146,7 +159,7 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/coupons",
     required: ["start_date", "end_date"],
-    optional: ["page", "per_page", "order_by", "order_dir", "search"],
+    optional: ["page", "per_page", "order_by", "order_dir", "search", "has_usage"],
     enums: {
       order_by: [
         "code",
@@ -162,15 +175,33 @@ const endpoints: Record<string, Endpoint> = {
       ],
       order_dir: ["asc", "desc"]
     },
+    integerFields: ["page", "per_page"],
     description: "List coupon usage for a date range"
+  },
+  "custom-metrics": {
+    command: "custom-metrics",
+    method: "GET",
+    path: "/custom-metrics",
+    optional: ["page", "per_page"],
+    integerFields: ["page", "per_page"],
+    description: "List available custom metrics"
+  },
+  "custom-metrics:value": {
+    command: "custom-metrics value",
+    method: "GET",
+    path: "/custom-metrics/{metric}/value",
+    required: ["start_date", "end_date", "metric"],
+    integerFields: ["metric"],
+    description: "Calculate a custom metric for a date range"
   },
   "reports:customers-by-date": {
     command: "reports customers-by-date",
     method: "GET",
     path: "/reports/customers-by-date",
     required: ["start_date", "end_date"],
-    optional: ["group_by"],
+    optional: ["group_by", "segment"],
     enums: { group_by: ["hour", "day", "week", "month", "year"] },
+    integerFields: ["segment"],
     description: "Customer growth over time"
   },
   "reports:orders-by-date": {
@@ -178,8 +209,9 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/orders-by-date",
     required: ["start_date", "end_date"],
-    optional: ["group_by"],
+    optional: ["group_by", "segment"],
     enums: { group_by: ["hour", "day", "week", "month", "year"] },
+    integerFields: ["segment"],
     description: "Order metrics over time"
   },
   "reports:revenue-by-date": {
@@ -187,8 +219,9 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/revenue-by-date",
     required: ["start_date", "end_date"],
-    optional: ["group_by"],
+    optional: ["group_by", "segment"],
     enums: { group_by: ["hour", "day", "week", "month", "year"] },
+    integerFields: ["segment"],
     description: "Revenue metrics over time"
   },
   "reports:profit-by-date": {
@@ -196,9 +229,19 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/profit-by-date",
     required: ["start_date", "end_date"],
+    optional: ["group_by", "segment"],
+    enums: { group_by: ["hour", "day", "week", "month", "year"] },
+    integerFields: ["segment"],
+    description: "Profit metrics over time"
+  },
+  "reports:advertising-costs-by-date": {
+    command: "reports advertising-costs-by-date",
+    method: "GET",
+    path: "/reports/advertising-costs-by-date",
+    required: ["start_date", "end_date"],
     optional: ["group_by"],
     enums: { group_by: ["hour", "day", "week", "month", "year"] },
-    description: "Profit metrics over time"
+    description: "Advertising costs over time"
   },
   "reports:subscriptions-stats": {
     command: "reports subscriptions-stats",
@@ -214,6 +257,7 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/revenue-grouped-by",
     required: ["start_date", "end_date", "grouped_by"],
+    optional: ["custom_field_key", "segment"],
     enums: {
       grouped_by: [
         "billing_address_country",
@@ -234,9 +278,11 @@ const endpoints: Record<string, Endpoint> = {
         "tax_rate_code",
         "tax_rate_label",
         "tax_rate_id",
-        "customer_role"
+        "customer_role",
+        "custom_field"
       ]
     },
+    integerFields: ["segment"],
     description: "Revenue grouped by a store dimension"
   },
   "reports:orders-grouped-by": {
@@ -244,6 +290,7 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/orders-grouped-by",
     required: ["start_date", "end_date", "grouped_by"],
+    optional: ["custom_field_key", "segment"],
     enums: {
       grouped_by: [
         "billing_address_country",
@@ -269,6 +316,7 @@ const endpoints: Record<string, Endpoint> = {
         "custom_field"
       ]
     },
+    integerFields: ["segment"],
     description: "Orders grouped by a store dimension"
   },
   "reports:customers-grouped-by": {
@@ -276,6 +324,7 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/customers-grouped-by",
     required: ["start_date", "end_date", "grouped_by"],
+    optional: ["custom_field_key", "segment"],
     enums: {
       grouped_by: [
         "billing_address_country",
@@ -300,6 +349,7 @@ const endpoints: Record<string, Endpoint> = {
         "first_coupon"
       ]
     },
+    integerFields: ["segment"],
     description: "Customers grouped by a store dimension"
   },
   "reports:sources": {
@@ -307,7 +357,8 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/sources",
     required: ["start_date", "end_date"],
-    optional: ["specific"],
+    optional: ["specific", "segment"],
+    integerFields: ["segment"],
     description: "Order sources by referrer"
   },
   "reports:sources-landing": {
@@ -315,6 +366,8 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/sources-landing",
     required: ["start_date", "end_date"],
+    optional: ["segment"],
+    integerFields: ["segment"],
     description: "Order sources by landing path"
   },
   "reports:sources-utms": {
@@ -322,7 +375,9 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/sources-utms",
     required: ["start_date", "end_date", "source_type"],
+    optional: ["segment"],
     enums: { source_type: [...sourceFields] },
+    integerFields: ["segment"],
     description: "Order sources grouped by UTM fields"
   },
   "reports:customer-sources": {
@@ -330,6 +385,8 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/customer-sources",
     required: ["start_date", "end_date"],
+    optional: ["segment"],
+    integerFields: ["segment"],
     description: "Customer acquisition sources by referrer"
   },
   "reports:customer-sources-landing": {
@@ -337,6 +394,8 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/customer-sources-landing",
     required: ["start_date", "end_date"],
+    optional: ["segment"],
+    integerFields: ["segment"],
     description: "Customer acquisition sources by landing path"
   },
   "reports:customer-sources-utms": {
@@ -344,15 +403,24 @@ const endpoints: Record<string, Endpoint> = {
     method: "GET",
     path: "/reports/customer-sources-utms",
     required: ["start_date", "end_date", "source_type"],
+    optional: ["segment"],
     enums: { source_type: [...sourceFields] },
+    integerFields: ["segment"],
     description: "Customer acquisition grouped by UTM fields"
+  },
+  "engage:profiles:get": {
+    command: "engage profile get",
+    method: "GET",
+    path: "/engage/profile",
+    required: ["email"],
+    description: "Get an Engage profile by email"
   },
   "engage:profiles:upsert": {
     command: "engage profile upsert",
     method: "POST",
     path: "/engage/profiles",
     required: ["email"],
-    optional: ["first_name", "last_name", "country", "company", "consent"],
+    optional: ["first_name", "last_name", "country", "company", "consent", "tags", "add_tags", "remove_tags"],
     enums: { consent: ["single", "double"] },
     description: "Create or update an Engage profile"
   },
@@ -367,8 +435,9 @@ const endpoints: Record<string, Endpoint> = {
     command: "engage unsubscribes list",
     method: "GET",
     path: "/engage/unsubscribes",
-    optional: ["after", "before", "order", "per_page", "page"],
+    optional: ["start_date", "end_date", "after", "before", "order", "per_page", "page"],
     enums: { order: ["asc", "desc"] },
+    integerFields: ["page", "per_page"],
     description: "List Engage unsubscribes"
   },
   "engage:unsubscribes:status": {
@@ -419,6 +488,33 @@ function saveConfig(config: CliConfig) {
   writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
+async function promptForApiKey() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    fail("missing API key. Pass it as an argument or run this command in an interactive terminal");
+  }
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: true
+  });
+
+  try {
+    const apiKey = (await rl.question(
+      "Metorik API key (from https://app.metorik.com/settings/stores/current?area=api): "
+    )).trim();
+
+    if (!apiKey) {
+      fail("missing API key");
+    }
+
+    process.stdout.write("\n");
+    return apiKey;
+  } finally {
+    rl.close();
+  }
+}
+
 function deleteConfig() {
   const file = configPath();
   if (existsSync(file)) {
@@ -428,6 +524,11 @@ function deleteConfig() {
 
 function parseDateRange(options: { startDate?: string; endDate?: string; last?: string }) {
   if (options.startDate && options.endDate) {
+    validateDate(options.startDate, "start_date");
+    validateDate(options.endDate, "end_date");
+    if (options.startDate > options.endDate) {
+      fail("start_date must be on or before end_date");
+    }
     return { start_date: options.startDate, end_date: options.endDate };
   }
 
@@ -452,6 +553,56 @@ function parseDateRange(options: { startDate?: string; endDate?: string; last?: 
 
 function isoDate(value: Date) {
   return value.toISOString().slice(0, 10);
+}
+
+function validateDate(value: string, field: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    fail(`${field} must be in YYYY-MM-DD format`);
+  }
+}
+
+function diffDaysInclusive(startDate: string, endDate: string) {
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  return Math.floor((end - start) / 86400000) + 1;
+}
+
+function validateDateTime(value: string, field: string) {
+  if (Number.isNaN(Date.parse(value))) {
+    fail(`${field} must be a valid date or datetime`);
+  }
+}
+
+function validateEmail(value: string, field = "email") {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    fail(`${field} must be a valid email address`);
+  }
+}
+
+function validateCountryCode(value: string) {
+  if (!/^[A-Za-z]{2}$/.test(value)) {
+    fail("country must be a 2-letter country code");
+  }
+}
+
+function parseListValue(value?: string) {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = coerceValue(value);
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  if (typeof parsed === "string") {
+    return parsed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  fail("tag values must be a comma-separated list or JSON array");
 }
 
 function printJson(value: unknown) {
@@ -550,11 +701,16 @@ function validateParams(endpoint: Endpoint, params: Record<string, unknown>) {
     }
 
     if (field === "source_type") {
-      const invalid = String(current)
+      const values = String(current)
         .split(",")
         .map((item) => item.trim())
-        .filter(Boolean)
-        .filter((item) => !allowed.includes(item));
+        .filter(Boolean);
+
+      if (values.length === 0) {
+        fail(`invalid ${field}: provide at least one value`);
+      }
+
+      const invalid = values.filter((item) => !allowed.includes(item));
 
       if (invalid.length > 0) {
         fail(`invalid ${field}: ${invalid.join(", ")}. Allowed: ${allowed.join(", ")}`);
@@ -565,6 +721,95 @@ function validateParams(endpoint: Endpoint, params: Record<string, unknown>) {
 
     if (!allowed.includes(String(current))) {
       fail(`invalid ${field}: ${current}. Allowed: ${allowed.join(", ")}`);
+    }
+  }
+
+  for (const field of endpoint.integerFields ?? []) {
+    const current = params[field];
+    if (current === undefined || current === "") {
+      continue;
+    }
+
+    if (!Number.isInteger(Number(current))) {
+      fail(`${field} must be an integer`);
+    }
+  }
+
+  if (endpoint.command === "search") {
+    const query = String(params.query ?? "");
+    const count = Number(params.count ?? 10);
+
+    if (query.length < 3) {
+      fail("query must be at least 3 characters");
+    }
+
+    if (params.count !== undefined && (count < 1 || count > 25)) {
+      fail("count must be between 1 and 25");
+    }
+  }
+
+  if (["products", "variations", "categories", "brands", "coupons", "custom-metrics"].includes(endpoint.command)) {
+    const page = Number(params.page ?? 1);
+    const perPage = Number(params.per_page ?? (endpoint.command === "custom-metrics" ? 50 : 10));
+
+    if (params.page !== undefined && page < 1) {
+      fail("page must be 1 or greater");
+    }
+
+    if (params.per_page !== undefined && (perPage < 1 || perPage > 100)) {
+      fail("per_page must be between 1 and 100");
+    }
+  }
+
+  if (endpoint.command === "coupons" && params.has_usage !== undefined && typeof params.has_usage !== "boolean") {
+    fail("has_usage must be true or false");
+  }
+
+  if (
+    [
+      "reports customers-by-date",
+      "reports orders-by-date",
+      "reports revenue-by-date",
+      "reports profit-by-date",
+      "reports advertising-costs-by-date"
+    ].includes(endpoint.command) &&
+    params.group_by === "hour"
+  ) {
+    const startDate = String(params.start_date ?? "");
+    const endDate = String(params.end_date ?? "");
+
+    if (startDate && endDate && diffDaysInclusive(startDate, endDate) >= 31) {
+      fail("group_by=hour is only supported when the date range is under 1 month");
+    }
+  }
+
+  if (endpoint.command.includes("grouped-by") && params.grouped_by === "custom_field" && !params.custom_field_key) {
+    fail("custom_field_key is required when grouped_by is custom_field");
+  }
+
+  if (typeof params.email === "string") {
+    validateEmail(params.email);
+  }
+
+  if (typeof params.country === "string") {
+    validateCountryCode(params.country);
+  }
+
+  if (endpoint.command === "engage unsubscribes list") {
+    if (params.start_date !== undefined) {
+      validateDateTime(String(params.start_date), "start_date");
+    }
+
+    if (params.end_date !== undefined) {
+      validateDateTime(String(params.end_date), "end_date");
+    }
+
+    if (params.after !== undefined) {
+      validateDateTime(String(params.after), "after");
+    }
+
+    if (params.before !== undefined) {
+      validateDateTime(String(params.before), "before");
     }
   }
 }
@@ -588,11 +833,21 @@ function addSearchOption(command: Command) {
   return command.option("--search <term>", "Search filter");
 }
 
+function addSegmentOption(command: Command, label = "Segment ID") {
+  return command.option("--segment <id>", label);
+}
+
 function numberIfSet(value?: string) {
   if (value === undefined) {
     return undefined;
   }
   return Number(value);
+}
+
+function coerceBooleanOption(value: string, field: string) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  fail(`${field} must be true or false`);
 }
 
 function parseKeyValue(entry: string) {
@@ -643,12 +898,13 @@ function buildProgram() {
     .addCommand(
       new Command("login")
         .argument(
-          "<apiKey>",
+          "[apiKey]",
           "Metorik API key from https://app.metorik.com/settings/stores/current?area=api"
         )
         .option("--base-url <url>", "Persist a custom base URL")
-        .action((apiKey: string, options: { baseUrl?: string }) => {
-          saveConfig({ apiKey, baseUrl: options.baseUrl || loadConfig().baseUrl });
+        .action(async (apiKey: string | undefined, options: { baseUrl?: string }) => {
+          const resolvedApiKey = apiKey || (await promptForApiKey());
+          saveConfig({ apiKey: resolvedApiKey, baseUrl: options.baseUrl || loadConfig().baseUrl });
           printJson({
             ok: true,
             message: "Saved Metorik credentials",
@@ -677,6 +933,16 @@ function buildProgram() {
     );
 
   program
+    .command("store")
+    .description(endpoints.store.description)
+    .action(async function () {
+      await requestJson({
+        command: this,
+        endpoint: endpoints.store
+      });
+    });
+
+  program
     .command("commands")
     .description("List supported Metorik endpoints")
     .action(() => {
@@ -697,8 +963,8 @@ function buildProgram() {
     .command("search")
     .description("Search Metorik resources")
     .argument("<resource>", "orders, customers, products, and more")
-    .argument("<query>", "Search query")
-    .option("--count <number>", "Number of results to return")
+    .argument("<query>", "Search query, minimum 3 characters")
+    .option("--count <number>", "Number of results to return, 1-25")
     .action(async function (resource: string, query: string, options: { count?: string }) {
       await requestJson({
         command: this,
@@ -719,6 +985,9 @@ function buildProgram() {
     if (endpoint.enums?.order_by) {
       command = addSortOptions(command);
     }
+    if (name === "coupons") {
+      command = command.option("--has-usage <boolean>", "Filter coupons by whether they have usage in the selected range")
+    }
 
     command.action(async function (options: Record<string, string | undefined>) {
       await requestJson({
@@ -730,21 +999,67 @@ function buildProgram() {
           per_page: numberIfSet(options.perPage),
           order_by: options.orderBy,
           order_dir: options.orderDir,
-          search: options.search
+          search: options.search,
+          has_usage:
+            name === "coupons" && options.hasUsage !== undefined ? coerceBooleanOption(options.hasUsage, "has_usage") : undefined
         })
       });
     });
   }
 
+  const customMetrics = program.command("custom-metrics").description("Work with custom metrics");
+
+  addPaginationOptions(customMetrics.description(endpoints["custom-metrics"].description)).action(async function (options: {
+    page?: string;
+    perPage?: string;
+  }) {
+    await requestJson({
+      command: this,
+      endpoint: endpoints["custom-metrics"],
+      query: {
+        page: numberIfSet(options.page),
+        per_page: numberIfSet(options.perPage)
+      }
+    });
+  });
+
+  addDateOptions(customMetrics.command("value").description(endpoints["custom-metrics:value"].description).argument("<metric>", "Metric ID")).action(
+    async function (metric: string, options: { startDate?: string; endDate?: string; last?: string }) {
+      await requestJson({
+        command: this,
+        endpoint: {
+          ...endpoints["custom-metrics:value"],
+          path: endpoints["custom-metrics:value"].path.replace("{metric}", metric)
+        },
+        query: {
+          metric: Number(metric),
+          ...parseDateRange(options)
+        }
+      });
+    }
+  );
+
   const reports = program.command("reports").description("Run Metorik reporting endpoints");
 
-  for (const key of [
-    "reports:customers-by-date",
-    "reports:orders-by-date",
-    "reports:revenue-by-date",
-    "reports:profit-by-date",
-    "reports:subscriptions-stats"
-  ] as const) {
+  for (const key of ["reports:customers-by-date", "reports:orders-by-date", "reports:revenue-by-date", "reports:profit-by-date"] as const) {
+    const endpoint = endpoints[key];
+    addDateOptions(reports.command(endpoint.command.split(" ")[1]).description(endpoint.description))
+      .option("--group-by <group>", "Grouping interval")
+      .option("--segment <id>", "Saved segment ID")
+      .action(async function (options: { startDate?: string; endDate?: string; last?: string; groupBy?: string; segment?: string }) {
+        await requestJson({
+          command: this,
+          endpoint,
+          query: {
+            ...parseDateRange(options),
+            group_by: options.groupBy,
+            segment: numberIfSet(options.segment)
+          }
+        });
+      });
+  }
+
+  for (const key of ["reports:advertising-costs-by-date", "reports:subscriptions-stats"] as const) {
     const endpoint = endpoints[key];
     addDateOptions(reports.command(endpoint.command.split(" ")[1]).description(endpoint.description))
       .option("--group-by <group>", "Grouping interval")
@@ -764,13 +1079,24 @@ function buildProgram() {
     const endpoint = endpoints[key];
     addDateOptions(reports.command(endpoint.command.split(" ")[1]).description(endpoint.description))
       .requiredOption("--grouped-by <field>", "Field to group by")
-      .action(async function (options: { startDate?: string; endDate?: string; last?: string; groupedBy: string }) {
+      .option("--custom-field-key <key>", "Custom field key when grouped-by is custom_field")
+      .option("--segment <id>", "Saved segment ID")
+      .action(async function (options: {
+        startDate?: string;
+        endDate?: string;
+        last?: string;
+        groupedBy: string;
+        customFieldKey?: string;
+        segment?: string;
+      }) {
         await requestJson({
           command: this,
           endpoint,
           query: {
             ...parseDateRange(options),
-            grouped_by: options.groupedBy
+            grouped_by: options.groupedBy,
+            custom_field_key: options.customFieldKey,
+            segment: numberIfSet(options.segment)
           }
         });
       });
@@ -778,69 +1104,86 @@ function buildProgram() {
 
   addDateOptions(reports.command("sources").description(endpoints["reports:sources"].description))
     .option("--specific <term>", "Partial domain filter")
-    .action(async function (options: { startDate?: string; endDate?: string; last?: string; specific?: string }) {
+    .option("--segment <id>", "Saved order segment ID")
+    .action(async function (options: { startDate?: string; endDate?: string; last?: string; specific?: string; segment?: string }) {
       await requestJson({
         command: this,
         endpoint: endpoints["reports:sources"],
         query: {
           ...parseDateRange(options),
-          specific: options.specific
+          specific: options.specific,
+          segment: numberIfSet(options.segment)
         }
       });
     });
 
   addDateOptions(reports.command("sources-landing").description(endpoints["reports:sources-landing"].description)).action(
-    async function (options: { startDate?: string; endDate?: string; last?: string }) {
+    async function (options: { startDate?: string; endDate?: string; last?: string; segment?: string }) {
       await requestJson({
         command: this,
         endpoint: endpoints["reports:sources-landing"],
-        query: parseDateRange(options)
+        query: {
+          ...parseDateRange(options),
+          segment: numberIfSet(options.segment)
+        }
       });
     }
-  );
+  ).option("--segment <id>", "Saved order segment ID");
 
   addDateOptions(reports.command("sources-utms").description(endpoints["reports:sources-utms"].description))
     .requiredOption("--source-type <fields>", "Comma-separated UTM fields")
-    .action(async function (options: { startDate?: string; endDate?: string; last?: string; sourceType: string }) {
+    .option("--segment <id>", "Saved order segment ID")
+    .action(async function (options: { startDate?: string; endDate?: string; last?: string; sourceType: string; segment?: string }) {
       await requestJson({
         command: this,
         endpoint: endpoints["reports:sources-utms"],
         query: {
           ...parseDateRange(options),
-          source_type: options.sourceType
+          source_type: options.sourceType,
+          segment: numberIfSet(options.segment)
         }
       });
     });
 
   addDateOptions(reports.command("customer-sources").description(endpoints["reports:customer-sources"].description)).action(
-    async function (options: { startDate?: string; endDate?: string; last?: string }) {
+    async function (options: { startDate?: string; endDate?: string; last?: string; segment?: string }) {
       await requestJson({
         command: this,
         endpoint: endpoints["reports:customer-sources"],
-        query: parseDateRange(options)
+        query: {
+          ...parseDateRange(options),
+          segment: numberIfSet(options.segment)
+        }
       });
     }
-  );
+  ).option("--segment <id>", "Saved customer segment ID");
 
   addDateOptions(
     reports.command("customer-sources-landing").description(endpoints["reports:customer-sources-landing"].description)
-  ).action(async function (options: { startDate?: string; endDate?: string; last?: string }) {
+  )
+    .option("--segment <id>", "Saved customer segment ID")
+    .action(async function (options: { startDate?: string; endDate?: string; last?: string; segment?: string }) {
     await requestJson({
       command: this,
       endpoint: endpoints["reports:customer-sources-landing"],
-      query: parseDateRange(options)
+      query: {
+        ...parseDateRange(options),
+        segment: numberIfSet(options.segment)
+      }
     });
   });
 
   addDateOptions(reports.command("customer-sources-utms").description(endpoints["reports:customer-sources-utms"].description))
     .requiredOption("--source-type <fields>", "Comma-separated UTM fields")
-    .action(async function (options: { startDate?: string; endDate?: string; last?: string; sourceType: string }) {
+    .option("--segment <id>", "Saved customer segment ID")
+    .action(async function (options: { startDate?: string; endDate?: string; last?: string; sourceType: string; segment?: string }) {
       await requestJson({
         command: this,
         endpoint: endpoints["reports:customer-sources-utms"],
         query: {
           ...parseDateRange(options),
-          source_type: options.sourceType
+          source_type: options.sourceType,
+          segment: numberIfSet(options.segment)
         }
       });
     });
@@ -849,12 +1192,26 @@ function buildProgram() {
   const profile = engage.command("profile").description("Manage Engage profiles");
 
   profile
+    .command("get")
+    .requiredOption("--email <email>", "Email address")
+    .action(async function (options: { email: string }) {
+      await requestJson({
+        command: this,
+        endpoint: endpoints["engage:profiles:get"],
+        query: { email: options.email }
+      });
+    });
+
+  profile
     .command("upsert")
     .requiredOption("--email <email>", "Email address")
     .option("--first-name <name>", "First name")
     .option("--last-name <name>", "Last name")
     .option("--country <code>", "Country code")
     .option("--company <name>", "Company")
+    .option("--tags <tags>", "Replace tags with a comma-separated list or JSON array")
+    .option("--add-tags <tags>", "Add tags from a comma-separated list or JSON array")
+    .option("--remove-tags <tags>", "Remove tags from a comma-separated list or JSON array")
     .addOption(new Option("--consent <mode>", "Consent mode").choices(["single", "double"]))
     .action(
       async function (options: {
@@ -864,6 +1221,9 @@ function buildProgram() {
         country?: string;
         company?: string;
         consent?: string;
+        tags?: string;
+        addTags?: string;
+        removeTags?: string;
       }) {
         await requestJson({
           command: this,
@@ -874,7 +1234,10 @@ function buildProgram() {
             last_name: options.lastName,
             country: options.country,
             company: options.company,
-            consent: options.consent
+            consent: options.consent,
+            tags: parseListValue(options.tags),
+            add_tags: parseListValue(options.addTags),
+            remove_tags: parseListValue(options.removeTags)
           }
         });
       }
@@ -894,17 +1257,31 @@ function buildProgram() {
   const unsubscribes = engage.command("unsubscribes").description("Manage Engage unsubscribes");
 
   addPaginationOptions(unsubscribes.command("list").description(endpoints["engage:unsubscribes:list"].description))
-    .option("--after <date>", "Only return unsubscribes after this date")
-    .option("--before <date>", "Only return unsubscribes before this date")
+    .option("--start-date <date>", "Only return unsubscribes on or after this datetime")
+    .option("--end-date <date>", "Only return unsubscribes on or before this datetime")
+    .option("--after <date>", "Deprecated alias for --start-date")
+    .option("--before <date>", "Deprecated alias for --end-date")
     .addOption(new Option("--order <direction>", "Sort direction").choices(["asc", "desc"]))
     .action(
-      async function (options: { after?: string; before?: string; order?: string; perPage?: string; page?: string }) {
+      async function (options: {
+        startDate?: string;
+        endDate?: string;
+        after?: string;
+        before?: string;
+        order?: string;
+        perPage?: string;
+        page?: string;
+      }) {
+        if ((options.startDate && options.after) || (options.endDate && options.before)) {
+          fail("use either --start-date/--end-date or --after/--before, not both");
+        }
+
         await requestJson({
           command: this,
           endpoint: endpoints["engage:unsubscribes:list"],
           query: {
-            after: options.after,
-            before: options.before,
+            start_date: options.startDate || options.after,
+            end_date: options.endDate || options.before,
             order: options.order,
             per_page: numberIfSet(options.perPage),
             page: numberIfSet(options.page)

@@ -30,5 +30,7 @@ describe("endpoint catalog", () => {
   it("includes the direct request discovery list", () => {
     expect(endpointCatalogForTests()["reports:revenue-by-date"].path).toBe("/reports/revenue-by-date");
     expect(endpointCatalogForTests()["engage:profiles:upsert"].method).toBe("POST");
+    expect(endpointCatalogForTests().store.path).toBe("/");
+    expect(endpointCatalogForTests()["custom-metrics:value"].path).toBe("/custom-metrics/{metric}/value");
   });
 });

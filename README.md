@@ -24,6 +24,7 @@ Store your API key locally:
 
 ```bash
 metorik auth login YOUR_API_KEY
+metorik auth login
 ```
 
 Get your key here:
@@ -100,12 +101,15 @@ metorik commands
 
 Top-level data endpoints:
 
+- `metorik store`
 - `metorik search <resource> <query>`
 - `metorik products`
 - `metorik variations`
 - `metorik categories`
 - `metorik brands`
 - `metorik coupons`
+- `metorik custom-metrics`
+- `metorik custom-metrics value <metric>`
 
 Reports:
 
@@ -113,6 +117,7 @@ Reports:
 - `metorik reports orders-by-date`
 - `metorik reports revenue-by-date`
 - `metorik reports profit-by-date`
+- `metorik reports advertising-costs-by-date`
 - `metorik reports subscriptions-stats`
 - `metorik reports revenue-grouped-by`
 - `metorik reports orders-grouped-by`
@@ -124,9 +129,12 @@ Reports:
 - `metorik reports customer-sources-landing`
 - `metorik reports customer-sources-utms`
 
+Note: `--group-by hour` is only valid on the time-series report endpoints when the selected range is under 1 month.
+
 Engage:
 
 - `metorik engage profile upsert`
+- `metorik engage profile get`
 - `metorik engage profile delete`
 - `metorik engage unsubscribes list`
 - `metorik engage unsubscribes status`
